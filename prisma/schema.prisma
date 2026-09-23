@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum AttendanceSource {
+  DEVICE
+  MANUAL
+  API
+  APP_GPS
+}
+
+enum AttendanceStatus {
+  VALID
+  OUT_OF_RANGE
+  LOW_ACCURACY
+}
+
+enum AuthProvider {
+  CREDENTIALS
+  GOOGLE
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String?
+  provider     AuthProvider @default(CREDENTIALS)
+  name         String
+  role         Role         @default(EMPLOYEE)
+  employeeId   String?      @unique
+  employee     Employee?    @relation(fields: [employeeId], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Employee {
+  id             String    @id @default(cuid())
+  odooId         Int?      @unique
+  name           String
+  email          String?
+  department     String?
+  jobTitle       String?
+  active         Boolean   @default(true)
+  syncedAt       DateTime  @default(now())
+  workScheduleId String?
+  workSchedule   WorkSchedule? @relation(fields: [workScheduleId], references: [id])
+  user           User?
+  attendances    AttendanceRecord[]
+
+  @@index([name])
+}
+
+model WorkSchedule {
+  id            String   @id @default(cuid())
+  name          String
+  startTime     String   // "08:00"
+  endTime       String   // "17:30"
+  workDays      String   // "2,3,4,5,6" = Thứ 2 -> Thứ 6 (1=CN..7=T7)
+  standardHours Float    @default(8)
+  note          String?
+  createdAt     DateTime @default(now())
+  employees     Employee[]
+}
+
+model Device {
+  id           String       @id @default(cuid())
+  name         String
+  serialNumber String       @unique
+  ipAddress    String?
+  location     String?
+  model        String?
+  status       DeviceStatus @default(OFFLINE)
+  apiKey       String       @unique
+  lastPingAt   DateTime?
+  createdAt    DateTime     @default(now())
+  attendances  AttendanceRecord[]
+}
+
+model AttendanceLocation {
+  id            String   @id @default(cuid())
+  name          String
+  latitude      Float
+  longitude     Float
+  radiusMeters  Int      @default(100)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  attendances   AttendanceRecord[]
+}
+
+model AttendanceRecord {
+  id         String           @id @default(cuid())
+  employeeId String
+  employee   Employee         @relation(fields: [employeeId], references: [id])
+  deviceId   String?
+  device     Device?          @relation(fields: [deviceId], references: [id])
+  type       AttendanceType
+  source     AttendanceSource @default(MANUAL)
+  checkTime  DateTime
+  note       String?
+  createdAt  DateTime         @default(now())
+
+  // Chấm công qua GPS điện thoại (source = APP_GPS)
+  latitude       Float?
+  longitude      Float?
+  accuracy       Float?
+  distanceMeters Float?
+  status         AttendanceStatus @default(VALID)
+  locationId     String?
+  attendanceLocation AttendanceLocation? @relation(fields: [locationId], references: [id])
+  ipAddress      String?
+  userAgent      String?
+
+  @@index([employeeId, checkTime])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  module      String
+  description String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module])
+}
